@@ -1,0 +1,210 @@
+Bài 2.2 của em là: Viết chương trình cho phép người dùng nhập PID của một Process, sau đó liệt kê tất cả các Thread đang thuộc Process đó, hiển thị thông tin: TID, Priority, CPU Usage (%) và Trạng thái truy cập.
+Để thực hiện được bài này, em sử dụng ToolHelp32 Library của Windows. Em xin trình bày tác dụng của từng hàm chính:
+
+CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+→ Tác dụng: Tạo một bản snapshot (ảnh chụp nhanh) toàn bộ các Thread đang chạy trên hệ thống tại thời điểm gọi hàm. Đây là bước đầu tiên và rất quan trọng để lấy danh sách Thread.
+Thread32First() và Thread32Next()
+→ Tác dụng: Duyệt (enumerate) qua toàn bộ danh sách Thread có trong snapshot. Giống như con trỏ để đi qua từng phần tử trong danh sách.
+OpenThread(THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID)
+→ Tác dụng: Mở một handle (đường dẫn) tới Thread cụ thể để có quyền lấy thông tin chi tiết của Thread đó.
+GetThreadTimes()
+→ Tác dụng: Lấy thông tin thời gian CPU mà Thread đã sử dụng, bao gồm kernel time (thời gian chạy ở mode kernel) và user time (thời gian chạy ở mode user).
+Hàm tự viết FileTimeToUInt64()
+→ Tác dụng: Chuyển đổi kiểu dữ liệu FILETIME (đơn vị 100 nanosecond) sang số 64-bit để dễ tính toán.'
+Vì CPU Usage là tỷ lệ sử dụng trong một khoảng thời gian, em phải:
+
+Lấy mẫu CPU Time lần 1.
+Ngủ 1 giây.
+Lấy mẫu CPU Time lần 2.
+Tính delta (chênh lệch) giữa 2 lần lấy mẫu, sau đó quy đổi ra phần trăm (%).
+
+
+Bài 2.3 của em là Create Process & Inject Parameter – Tạo Process con và truyền tham số từ Process cha sang Process con.
+Em sẽ trình bày từ file Parent.cpp sang file Child.cpp, và giải thích tác dụng của từng hàm chính.
+1. Trong file Parent.cpp (Process cha):
+
+CreateFileW()
+→ Tác dụng: Tạo (hoặc mở) file output.txt để làm nơi lưu output của Process con.
+SECURITY_ATTRIBUTES với bInheritHandle = TRUE
+→ Tác dụng: Cho phép Process con kế thừa handle của file, đây là điều kiện cần để redirect output.
+STARTUPINFOW và cờ STARTF_USESTDHANDLES
+→ Tác dụng: Cấu hình thông tin khởi động Process, báo cho hệ thống biết sẽ redirect các luồng chuẩn (stdout, stderr).
+Gán si.hStdOutput và si.hStdError
+→ Tác dụng: Chuyển hướng toàn bộ output (STDOUT và STDERR) của Child sang file output.txt.
+CreateProcessW()
+→ Tác dụng: Đây là hàm quan trọng nhất, dùng để tạo ra một Process con mới. Em truyền command line L"Child.exe Hello Windows API" để inject parameter (truyền tham số) sang con.
+GetCurrentProcessId()
+→ Tác dụng: Lấy PID của Process cha để hiển thị.
+WaitForSingleObject(pi.hProcess, INFINITE)
+→ Tác dụng: Dừng Process cha lại và chờ cho đến khi Process con chạy xong.
+GetExitCodeProcess()
+→ Tác dụng: Lấy giá trị Exit Code mà Process con trả về.
+GetTickCount()
+→ Tác dụng: Đo thời gian chạy (tính bằng mili-giây) của toàn bộ quá trình tạo và chạy Child.
+
+2. Trong file Child.cpp (Process con):
+
+wmain(int argc, wchar_t* argv[])
+→ Tác dụng: Nhận tham số dòng lệnh mà Parent truyền sang.
+GetCurrentProcessId()
+→ Tác dụng: In ra PID của chính Process con.
+Vòng lặp in argv[]
+→ Tác dụng: Hiển thị các tham số mà Parent đã inject vào.
+Vòng lặp for + Sleep(1000)
+→ Tác dụng: Giả lập công việc thực tế kéo dài 5 giây.
+return 123;
+→ Tác dụng: Trả về Exit Code cho Parent đọc.
+
+Mối liên hệ giữa Parent và Child:
+Parent tạo Child bằng CreateProcessW, truyền tham số, redirect output, chờ Child chạy xong, rồi thu thập kết quả (thời gian chạy + Exit Code).
+Nhờ cơ chế kế thừa handle và redirect, output của Child không hiện trên màn hình mà được ghi vào file output.txt. 
+
+
+Bài 3.1
+1. Hàm AddOrEditValue():
+
+RegCreateKeyExW()
+→ Tác dụng: Tạo mới một Registry Key nếu chưa tồn tại, hoặc mở key nếu đã tồn tại. Em dùng key HKEY_CURRENT_USER\Software\MyApp với quyền KEY_ALL_ACCESS.
+RegSetValueExW()
+→ Tác dụng: Ghi (hoặc chỉnh sửa) một giá trị vào Registry Key. Ở đây em ghi giá trị chuỗi (REG_SZ) có tên là UserName.
+RegCloseKey()
+→ Tác dụng: Đóng handle của Registry Key để giải phóng tài nguyên.
+
+2. Hàm DeleteValue():
+
+RegOpenKeyExW()
+→ Tác dụng: Mở một Registry Key đã tồn tại với quyền KEY_SET_VALUE (chỉ cần quyền xóa).
+RegDeleteValueW()
+→ Tác dụng: Xóa một giá trị cụ thể (ở đây là giá trị UserName) khỏi Registry Key.
+RegCloseKey()
+→ Tác dụng: Đóng handle sau khi sử dụng xong.
+
+3. Phần wmain():
+
+Vòng lặp do-while + menu
+→ Tác dụng: Tạo giao diện CLI đơn giản cho người dùng chọn chức năng (1: Add/Edit, 2: Delete, 0: Thoát).
+wcin >> choice và wcin.ignore()
+→ Tác dụng: Nhận lựa chọn từ người dùng và xử lý ký tự newline còn sót lại để tránh lỗi nhập liệu.
+
+
+a. Hàm AddOrEditValue():
+
+RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\MyApp", ...)
+→ Tác dụng: Tạo mới Key nếu chưa tồn tại, hoặc mở Key nếu đã tồn tại. Em sử dụng quyền KEY_ALL_ACCESS để có đầy đủ quyền đọc - ghi.
+RegSetValueExW()
+→ Tác dụng: Ghi hoặc cập nhật giá trị UserName vào Key. Em dùng kiểu REG_SZ (chuỗi Unicode) và tính đúng kích thước bộ nhớ (value.size() + 1) * sizeof(wchar_t).
+RegCloseKey(hKey)
+→ Tác dụng: Đóng handle của Key để giải phóng tài nguyên hệ thống.
+
+b. Hàm DeleteValue():
+
+RegOpenKeyExW()
+→ Tác dụng: Mở Key với quyền KEY_SET_VALUE (chỉ cần quyền xóa).
+RegDeleteValueW(hKey, L"UserName")
+→ Tác dụng: Xóa giá trị UserName khỏi Key.
+RegCloseKey(hKey)
+→ Tác dụng: Đóng handle sau khi xóa xong.
+
+c. Hàm wmain():
+
+Sử dụng vòng lặp do-while kết hợp switch-case → Tạo menu cho người dùng chọn chức năng (1: Thêm/Sửa, 2: Xóa, 0: Thoát).
+Sử dụng wcin.ignore() → Xử lý ký tự Enter còn sót lại sau khi nhập số, tránh lỗi nhập chuỗi sau đó.
+
+Bài 3.2
+Các Windows API sử dụng
+WideCharToMultiByte()
+
+→ Tác dụng: Chuyển chuỗi UTF-16 của Windows sang UTF-8 để hiển thị trên Console.
+
+MultiByteToWideChar()
+
+→ Tác dụng: Chuyển chuỗi UTF-8 người dùng nhập thành UTF-16 trước khi truyền vào Windows API.
+
+FormatMessageA()
+
+→ Tác dụng: Chuyển mã lỗi của Windows thành thông báo dễ hiểu.
+
+GetLastError()
+
+→ Tác dụng: Lấy mã lỗi của Windows API nếu thao tác vừa thực hiện thất bại.
+
+OpenSCManagerW()
+
+→ Tác dụng: Mở kết nối tới Service Control Manager (SCM). Đây là bước đầu tiên và bắt buộc trước khi thực hiện bất kỳ thao tác quản lý Service nào.
+
+EnumServicesStatusExW()
+
+→ Tác dụng: Liệt kê toàn bộ Windows Service trên hệ thống. Hàm trả về các thông tin như tên Service, Display Name, trạng thái hoạt động và Process ID (PID).
+
+OpenServiceW()
+
+→ Tác dụng: Mở một Service cụ thể theo tên Service với quyền truy cập tương ứng như SERVICE_START, SERVICE_STOP hoặc SERVICE_QUERY_STATUS.
+
+StartServiceW()
+
+→ Tác dụng: Gửi yêu cầu tới Service Control Manager để khởi động Service.
+
+ControlService()
+
+→ Tác dụng: Gửi lệnh điều khiển tới Service. Trong chương trình này sử dụng lệnh SERVICE_CONTROL_STOP để dừng Service.
+
+CloseServiceHandle()
+
+→ Tác dụng: Đóng Handle của Service hoặc Service Control Manager sau khi hoàn thành thao tác, giúp giải phóng tài nguyên hệ thống.
+Các chức năng của chương trình
+LietKeService()
+
+→ Tác dụng: Liệt kê toàn bộ Windows Service trên hệ thống.
+
+Để thực hiện được chức năng này, chương trình:
+
+Mở Service Control Manager bằng OpenSCManagerW().
+Gọi EnumServicesStatusExW() lần thứ nhất để lấy kích thước bộ nhớ cần cấp phát.
+Cấp phát bộ nhớ bằng vector<BYTE>.
+Gọi EnumServicesStatusExW() lần thứ hai để lấy toàn bộ danh sách Service.
+Duyệt từng Service và hiển thị:
+Service Name
+Display Name
+Status
+PID
+KhoiDongService()
+
+→ Tác dụng: Khởi động một Windows Service theo tên do người dùng nhập.
+
+Để thực hiện được chức năng này, chương trình:
+
+Nhận tên Service từ bàn phím.
+Chuyển đổi từ UTF-8 sang UTF-16 bằng MultiByteToWideChar().
+Mở Service Control Manager bằng OpenSCManagerW().
+Mở Service bằng OpenServiceW().
+Gọi StartServiceW() để khởi động Service.
+Nếu xảy ra lỗi, sử dụng GetLastError() và FormatMessageA() để hiển thị thông báo lỗi.
+DungService()
+
+→ Tác dụng: Dừng một Windows Service theo tên do người dùng nhập.
+
+Để thực hiện được chức năng này, chương trình:
+
+Nhận tên Service từ bàn phím.
+Chuyển đổi chuỗi sang UTF-16.
+Mở Service Control Manager.
+Mở Service bằng OpenServiceW().
+Gọi ControlService() với lệnh SERVICE_CONTROL_STOP.
+Nếu thất bại, lấy mã lỗi và hiển thị thông báo lỗi.
+LietKeServiceDieuKhienDuoc()
+
+→ Tác dụng: Liệt kê các Service mà người dùng hiện tại có quyền điều khiển.
+
+Để thực hiện được chức năng này, chương trình:
+
+Lấy toàn bộ danh sách Service bằng EnumServicesStatusExW().
+Lần lượt mở từng Service với quyền SERVICE_START.
+Tiếp tục mở với quyền SERVICE_STOP.
+Nếu một trong hai thao tác thành công, Service đó sẽ được đưa vào danh sách.
+Hiển thị:
+Service Name
+Display Name
+Status
+Có quyền Start hay không.
+Có quyền Stop hay không.
+PID.
