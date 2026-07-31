@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ScanEngine/ScanEngine.vcxproj" Id="0765a5e8-fbec-4959-8420-795d68d240ea" />
+</Solution>
